@@ -1,0 +1,43 @@
+import requests
+from bs4 import BeautifulSoup
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+
+class SimpleQA:
+    def __init__(self, text):
+        self.vectorizer = TfidfVectorizer()
+        self.sentences = text.split(". ")
+        self.tfidf_matrix = self.vectorizer.fit_transform(self.sentences)
+
+    def answer_question(self, question):
+        question_vec = self.vectorizer.transform([question])
+        similarities = cosine_similarity(question_vec, self.tfidf_matrix).flatten()
+        best_match = self.sentences[similarities.argmax()]
+        return best_match
+
+def scrape_and_clean(url: str) -> str:
+    """Fetch the webpage and extract clean text content."""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        # Extract clean text
+        text = ' '.join(soup.stripped_strings)
+        return text
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching the URL: {e}"
+
+# main
+url = "https://nvd.nist.gov/vuln/detail/cve-2024-2345"  # Provide the url here
+cleaned_text = scrape_and_clean(url)
+#print(cleaned_text)
+
+qa_model = SimpleQA(cleaned_text)
+print(qa_model.answer_question("What is this document about?"))
+print(qa_model.answer_question("What is this score provided in CVSS?"))
