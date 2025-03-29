@@ -1,0 +1,60 @@
+import requests
+from bs4 import BeautifulSoup
+import os
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains import RetrievalQA
+from langchain.chat_models import ChatOpenAI
+from langchain.document_loaders import TextLoader
+
+class QAModel:
+    def __init__(self, api_key: str):
+        self.documents = []
+        self.retriever = None
+        self.api_key = api_key
+
+    def load_content(self, text: str):
+        """Load and preprocess text content."""
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+        texts = text_splitter.create_documents([text])
+        embeddings = OpenAIEmbeddings(openai_api_key=self.api_key)
+        vectorstore = FAISS.from_documents(texts, embeddings)
+        self.retriever = vectorstore.as_retriever()
+
+    def answer_question(self, question: str):
+        """Answer questions based on loaded content."""
+        if not self.retriever:
+            return "No content available. Please provide input text."
+
+        qa_chain = RetrievalQA.from_chain_type(llm=ChatOpenAI(openai_api_key=self.api_key), chain_type="stuff", retriever=self.retriever)
+        return qa_chain.run(question)
+
+def scrape_and_clean(url: str) -> str:
+    """Fetch the webpage and extract clean text content."""
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+
+        # Extract clean text
+        text = ' '.join(soup.stripped_strings)
+        return text
+    except requests.exceptions.RequestException as e:
+        return f"Error fetching the URL: {e}"
+
+# main
+url = "https://nvd.nist.gov/vuln/detail/cve-2024-2345" # Provide the url here
+cleaned_text = scrape_and_clean(url)
+print(cleaned_text)
+
+api_key = ""#"your-api-key"  
+qa_model = QAModel(api_key)
+#qa_model.load_content("This is an document about artificial intelligence.")
+qa_model.load_content(cleaned_text)
+print(qa_model.answer_question("What is this document about?"))
